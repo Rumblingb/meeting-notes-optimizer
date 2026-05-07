@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meeting Notes Optimizer — Clean Summaries in Seconds</title>
+<meta name="description" content="Paste messy meeting notes or transcripts and get clean summaries with action items, decisions, and key points extracted automatically.">
+<script src="https://js.stripe.com/v3/"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text2: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #1f6feb;
+    --green: #3fb950;
+    --yellow: #d2991d;
+    --red: #f85149;
+    --purple: #a371f7;
+    --orange: #db6d28;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  /* Header */
+  header {
+    text-align: center;
+    padding: 40px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+  header h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p {
+    color: var(--text2);
+    margin-top: 8px;
+    font-size: 1.05rem;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px 16px;
+    text-align: center;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--text2);
+    transition: all 0.2s;
+    border: none;
+    background: transparent;
+  }
+  .tab.active {
+    background: var(--surface2);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,.3);
+  }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* Input Section */
+  .input-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .input-section label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 10px;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+  textarea {
+    width: 100%;
+    min-height: 220px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    resize: vertical;
+    transition: border-color 0.2s;
+  }
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(88,166,255,.15);
+  }
+  textarea::placeholder { color: var(--text2); opacity: 0.6; }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 11px 24px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--accent2);
+    color: #fff;
+  }
+  .btn-primary:hover { background: #388bfd; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(31,111,235,.3); }
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-success {
+    background: #238636;
+    color: #fff;
+  }
+  .btn-success:hover { background: #2ea043; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+  .btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+
+  /* Output Section */
+  .output-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: none;
+  }
+  .output-section.visible { display: block; }
+
+  .format-selector {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .format-btn {
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+  }
+  .format-btn.active {
+    background: var(--accent2);
+    color: #fff;
+    border-color: var(--accent2);
+  }
+  .format-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+  .summary-block {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .summary-block h3 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .summary-block h3 .icon { font-size: 1.1rem; }
+  .summary-block ul {
+    list-style: none;
+    padding: 0;
+  }
+  .summary-block ul li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.92rem;
+  }
+  .summary-block ul li:last-child { border-bottom: none; }
+  .summary-block ul li .bullet {
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .highlight { background: rgba(88,166,255,.1); border-left: 3px solid var(--accent); padding: 4px 8px; border-radius: 0 4px 4px 0; }
+
+  /* Premium Banner */
+  .premium-banner {
+    background: linear-gradient(135deg, #1a1f35, #1a1a2e);
+    border: 1px solid var(--purple);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .premium-banner .prem-info h3 {
+    color: var(--purple);
+    font-size: 1rem;
+    margin-bottom: 4px;
+  }
+  .premium-banner .prem-info p {
+    color: var(--text2);
+    font-size: 0.85rem;
+  }
+  .premium-banner .price {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .premium-banner .price span { font-size: 0.9rem; color: var(--text2); font-weight: 400; }
+
+  /* Status toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 20px;
+    color: var(--text);
+    font-size: 0.9rem;
+    transform: translateY(120px);
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); }
+  .toast.error { border-color: var(--red); }
+
+  /* Loading */
+  .spinner {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border: 2px solid transparent;
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Stats */
+  .stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 12px 16px;
+    text-align: center;
+    min-width: 80px;
+  }
+  .stat .num { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .stat .lbl { font-size: 0.75rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 500px;
+    width: 90%;
+    text-align: center;
+  }
+  .modal h2 { margin-bottom: 12px; }
+  .modal p { color: var(--text2); margin-bottom: 20px; font-size: 0.9rem; }
+  .modal .close-btn {
+    margin-top: 16px;
+    background: transparent;
+    border: none;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  /* Saved Notes List */
+  .saved-list {
+    margin-top: 12px;
+  }
+  .saved-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .saved-item .meta {
+    font-size: 0.8rem;
+    color: var(--text2);
+  }
+  .saved-item .title {
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .container { padding: 12px; }
+    header h1 { font-size: 1.5rem; }
+    .premium-banner { flex-direction: column; text-align: center; }
+    .btn-row { flex-direction: column; }
+    .btn { justify-content: center; }
+  }
+
+  /* Code/pre blocks for executive summary */
+  .exec-summary {
+    white-space: pre-wrap;
+    font-family: inherit;
+    line-height: 1.8;
+  }
+  .caveman-brief {
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+  .caveman-brief li { font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>📋 Meeting Notes Optimizer</h1>
+    <p>Paste messy notes or transcripts — get clean summaries instantly</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="optimize">⚡ Optimize</button>
+    <button class="tab" data-tab="saved">💾 Saved Notes</button>
+    <button class="tab" data-tab="premium">⭐ Premium</button>
+  </div>
+
+  <!-- Optimize Tab -->
+  <div id="tab-optimize" class="tab-content">
+    <div class="input-section">
+      <label for="notes-input">📝 Paste your meeting notes or transcript below:</label>
+      <textarea id="notes-input" placeholder="Paste your raw meeting notes, transcript, or rambling thoughts here...
+
+Example:
+Meeting with Marketing team - April 15
+John: We need to increase social media engagement. I'll draft a new content calendar by Friday.
+Sarah: Agreed. Also, we decided to allocate $5k for Q2 ad spend.
+Decision: Switch from Mailchimp to HubSpot for email campaigns.
+TODO: @Mike to research HubSpot migration timeline.
+Key takeaway: Customer retention rate dropped 3% last quarter — needs immediate attention."></textarea>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-optimize" onclick="optimizeNotes()">
+          🔍 Optimize Notes
+        </button>
+        <button class="btn btn-secondary" onclick="clearInput()">🗑 Clear</button>
+        <button class="btn btn-secondary" onclick="loadDemo()">📥 Load Demo</button>
+      </div>
+    </div>
+
+    <div id="output-section" class="output-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+        <h2 style="font-size:1.1rem;">📊 Optimized Summary</h2>
+        <div class="format-selector">
+          <button class="format-btn active" data-format="bullet" onclick="switchFormat('bullet',this)">● Bullet List</button>
+          <button class="format-btn" data-format="executive" onclick="switchFormat('executive',this)">📄 Executive Summary</button>
+          <button class="format-btn" data-format="caveman" onclick="switchFormat('caveman',this)">🦴 Caveman Brief</button>
+        </div>
+      </div>
+
+      <div class="stats" id="stats-row"></div>
+
+      <div id="summary-bullet" class="format-content">
+        <div class="summary-block" id="block-keypoints"></div>
+        <div class="summary-block" id="block-decisions"></div>
+        <div class="summary-block" id="block-actions"></div>
+      </div>
+      <div id="summary-executive" class="format-content" style="display:none;"></div>
+      <div id="summary-caveman" class="format-content" style="display:none;"></div>
+
+      <div class="btn-row" style="margin-top:16px;">
+        <button class="btn btn-success" id="btn-save" onclick="saveNote()">💾 Save to Local Storage</button>
+        <button class="btn btn-secondary" onclick="exportPDF()">📥 Export PDF</button>
+        <button class="btn btn-secondary" onclick="copySummary()">📋 Copy Summary</button>
+      </div>
+
+      <!-- Premium upsell for non-premium users -->
+      <div id="premium-upsell" class="premium-banner" style="margin-top:20px;">
+        <div class="prem-info">
+          <h3>⭐ Upgrade to Premium — $15</h3>
+          <p>Unlock: Cloud save, PDF export without watermarks, Slack integration, priority processing</p>
+        </div>
+        <button class="btn btn-primary" onclick="showPremiumModal()">Upgrade Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saved Tab -->
+  <div id="tab-saved" class="tab-content" style="display:none;">
+    <div class="input-section">
+      <h2 style="font-size:1.1rem;margin-bottom:12px;">💾 Your Saved Notes</h2>
+      <p style="color:var(--text2);margin-bottom:16px;">Notes are saved in your browser's local storage. Upgrade to Premium for cloud sync.</p>
+      <div id="saved-list" class="saved-list">
+        <p style="color:var(--text2);">No saved notes yet. Optimize and save some notes!</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Premium Tab -->
+  <div id="tab-premium" class="tab-content" style="display:none;">
+    <div class="input-section">
+      <h2 style="font-size:1.3rem;margin-bottom:8px;">⭐ Premium Plan — $15 one-time</h2>
+      <p style="color:var(--text2);margin-bottom:20px;">Unlock the full power of Meeting Notes Optimizer</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+        <div class="summary-block" style="text-align:center;">
+          <div style="font-size:2rem;margin-bottom:4px;">☁️</div>
+          <h4 style="margin-bottom:6px;">Cloud Save</h4>
+          <p style="font-size:0.85rem;color:var(--text2);">Access your notes from any device</p>
+        </div>
+        <div class="summary-block" style="text-align:center;">
+          <div style="font-size:2rem;margin-bottom:4px;">📄</div>
+          <h4 style="margin-bottom:6px;">PDF Export</h4>
+          <p style="font-size:0.85rem;color:var(--text2);">Clean, watermark-free PDFs</p>
+        </div>
+        <div class="summary-block" style="text-align:center;">
+          <div style="font-size:2rem;margin-bottom:4px;">🔌</div>
+          <h4 style="margin-bottom:6px;">Slack Integration</h4>
+          <p style="font-size:0.85rem;color:var(--text2);">Post summaries directly to Slack</p>
+        </div>
+        <div class="summary-block" style="text-align:center;">
+          <div style="font-size:2rem;margin-bottom:4px;">⚡</div>
+          <h4 style="margin-bottom:6px;">Priority Processing</h4>
+          <p style="font-size:0.85rem;color:var(--text2);">Faster, AI-enhanced extractions</p>
+        </div>
+      </div>
+
+      <div style="text-align:center;">
+        <div class="price" style="font-size:2rem;font-weight:700;margin-bottom:16px;">$15 <span style="font-size:0.9rem;color:var(--text2);font-weight:400;">one-time</span></div>
+        <button class="btn btn-primary" onclick="checkoutPremium()" id="btn-checkout" style="font-size:1rem;padding:14px 40px;">
+          💳 Pay with Stripe — $15
+        </button>
+        <p style="color:var(--text2);font-size:0.8rem;margin-top:8px;">Secure payment via Stripe. Instant access after payment.</p>
+      </div>
+
+      <div id="premium-status" style="margin-top:20px;text-align:center;display:none;">
+        <div style="color:var(--green);font-weight:600;font-size:1.1rem;">✅ You're a Premium member!</div>
+        <p style="color:var(--text2);font-size:0.85rem;">All premium features unlocked.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Premium Modal -->
+<div class="modal-overlay" id="premium-modal">
+  <div class="modal">
+    <h2>⭐ Upgrade to Premium</h2>
+    <p>Get cloud save, PDF export, Slack integration, and priority AI processing — all for a one-time payment of $15.</p>
+    <button class="btn btn-primary" onclick="checkoutPremium()">Pay $15 with Stripe</button>
+    <br>
+    <button class="close-btn" onclick="closePremiumModal()">Maybe later</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+// ============ STATE ============
+let currentResult = null;
+let currentFormat = 'bullet';
+let isPremium = localStorage.getItem('mno_premium') === 'true';
+
+// ============ INIT ============
+document.addEventListener('DOMContentLoaded', () => {
+  setupTabs();
+  if (isPremium) {
+    document.getElementById('premium-status').style.display = 'block';
+    document.getElementById('premium-upsell').style.display = 'none';
+  }
+  renderSavedList();
+});
+
+// ============ TABS ============
+function setupTabs() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      document.getElementById('tab-' + target).style.display = 'block';
+    });
+  });
+}
+
+// ============ CORE: NOTE PARSING ENGINE ============
+function optimizeNotes() {
+  const raw = document.getElementById('notes-input').value.trim();
+  if (!raw) {
+    showToast('Please paste some meeting notes first.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-optimize');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analyzing...';
+
+  // Use setTimeout to allow the UI to update
+  setTimeout(() => {
+    const result = parseNotes(raw);
+    currentResult = result;
+    displayResult(result);
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Optimize Notes';
+    document.getElementById('output-section').classList.add('visible');
+    document.getElementById('output-section').scrollIntoView({ behavior: 'smooth' });
+
+    if (isPremium) {
+      document.getElementById('premium-upsell').style.display = 'none';
+    }
+  }, 400);
+}
+
+function parseNotes(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const keyPoints = [];
+  const decisions = [];
+  const actionItems = [];
+  const people = new Set();
+  const topics = new Set();
+
+  // Strong patterns
+  const decisionPatterns = [
+    /^decision\s*:/i, /^decided\s*:/i, /^resolution\s*:/i, /^agreed\s*:/i,
+    /^conclusion\s*:/i, /^outcome\s*:/i, /\bdecided\s+that\b/i,
+    /\b(we|team)\s+(have\s+)?decided\b/i, /\bagreed\s+(upon|to|that)\b/i,
+    /\bfinal\s+decision\b/i, /\bconcluded\b/i,
+  ];
+  const actionPatterns = [
+    /^todo\s*:/i, /^action\s*(item)?\s*:/i, /^task\s*:/i, /^next\s*steps?\s*:/i,
+    /@\w+/, /\b(assigned\s+to|owner\s*:)\b/i, /\b(needs?\s+to|must|should|has\s+to)\b/i,
+    /\b(i'?ll|i\s+will|we'?ll|we\s+will)\b/i, /\b(action|follow.?up)\b/i,
+    /\bby\s+(tomorrow|friday|monday|tuesday|wednesday|thursday|next\s+week|eow|eod)\b/i,
+    /\bdraft\b/i, /\bprepare\b/i, /\bschedule\b/i, /\breview\b/i,
+  ];
+  const keyPointPatterns = [
+    /^key\s*(point|takeaway|insight|finding)s?\s*:/i,
+    /^important\s*:/i, /^note\s*:/i, /^highlight\s*:/i,
+    /\b(key|main|important|critical|essential)\s+(point|takeaway|finding|issue|concern|metric)\b/i,
+    /\b\d+%\b/, /\$\d+[kKmMbB]?/, /\bQ[1-4]\b/,
+    /\b(increased|decreased|dropped|rose|fell|grew)\s+by\b/i,
+  ];
+
+  // Person detection
+  const personRegex = /\b([A-Z][a-z]+)\s*(?::|,|said|mentioned|noted|reported|shared|added|asked|suggested|proposed|presented)/g;
+  let m;
+  while ((m = personRegex.exec(text)) !== null) {
+    people.add(m[1]);
+  }
+  // Also @mentions
+  const mentionRegex = /@(\w+)/g;
+  while ((m = mentionRegex.exec(text)) !== null) {
+    people.add(m[1]);
+  }
+
+  // Classify each line
+  for (const line of lines) {
+    const clean = line.trim();
+    if (!clean || clean.length < 3) continue;
+
+    let classified = false;
+
+    // Check decisions
+    for (const pat of decisionPatterns) {
+      if (pat.test(clean)) {
+        decisions.push(clean.replace(/^(decision|decided|resolution|agreed|conclusion|outcome)\s*:\s*/i, '').trim());
+        classified = true;
+        break;
+      }
+    }
+
+    // Check actions
+    if (!classified) {
+      for (const pat of actionPatterns) {
+        if (pat.test(clean)) {
+          actionItems.push(clean.replace(/^(todo|action\s*item|task|next\s*steps?)\s*:\s*/i, '').trim());
+          classified = true;
+          break;
+        }
+      }
+    }
+
+    // Check key points
+    if (!classified) {
+      for (const pat of keyPointPatterns) {
+        if (pat.test(clean)) {
+          keyPoints.push(clean.replace(/^(key\s*(point|takeaway|insight|finding)s?|important|note|highlight)\s*:\s*/i, '').trim());
+          classified = true;
+          break;
+        }
+      }
+    }
+
+    // If not classified as decision/action/keypoint, try to detect topic
+    if (!classified) {
+      // Lines starting with #, ##, or all-caps short lines are likely topics
+      if (/^#+\s/.test(clean) || /^[A-Z][A-Z\s&-]{3,40}$/.test(clean) || /^[A-Z][a-z]+(\s+[A-Z][a-z]+){1,5}:/.test(clean)) {
+        const topic = clean.replace(/^#+\s*/, '').replace(/:$/, '').trim();
+        if (topic.length > 2 && topic.length < 80) {
+          topics.add(topic);
+        }
+        classified = true;
+      }
+
+      // Lines with timestamps
+      if (/\[\d{2}:\d{2}\]|\(\d{2}:\d{2}\)|\d{1,2}:\d{2}\s*(am|pm|AM|PM)/.test(clean)) {
+        classified = true; // skip raw transcript timestamps
+      }
+    }
+
+    // Fallback: if line seems substantive, add as key point
+    if (!classified && clean.split(' ').length >= 4) {
+      keyPoints.push(clean);
+    }
+  }
+
+  // Deduplicate
+  const dedup = (arr) => [...new Set(arr)];
+
+  return {
+    raw: text,
+    keyPoints: dedup(keyPoints),
+    decisions: dedup(decisions),
+    actionItems: dedup(actionItems),
+    people: [...people],
+    topics: [...topics],
+    totalLines: lines.length,
+    wordCount: text.split(/\s+/).filter(Boolean).length,
+  };
+}
+
+// ============ DISPLAY ============
+function displayResult(result) {
+  const stats = document.getElementById('stats-row');
+  stats.innerHTML = `
+    <div class="stat"><div class="num">${result.actionItems.length}</div><div class="lbl">Action Items</div></div>
+    <div class="stat"><div class="num">${result.decisions.length}</div><div class="lbl">Decisions</div></div>
+    <div class="stat"><div class="num">${result.keyPoints.length}</div><div class="lbl">Key Points</div></div>
+    <div class="stat"><div class="num">${result.people.length}</div><div class="lbl">People</div></div>
+    <div class="stat"><div class="num">${result.wordCount}</div><div class="lbl">Words</div></div>
+  `;
+
+  // Bullet List format
+  renderBulletList(result);
+  // Executive Summary
+  renderExecutiveSummary(result);
+  // Caveman Brief
+  renderCavemanBrief(result);
+
+  // Show correct format
+  switchFormat(currentFormat, document.querySelector(`.format-btn[data-format="${currentFormat}"]`));
+}
+
+function renderBulletList(result) {
+  const kp = document.getElementById('block-keypoints');
+  const dec = document.getElementById('block-decisions');
+  const act = document.getElementById('block-actions');
+
+  kp.innerHTML = `<h3><span class="icon">💡</span> Key Points</h3>` +
+    (result.keyPoints.length ? '<ul>' + result.keyPoints.map(p => `<li><span class="bullet">●</span> ${escapeHtml(p)}</li>`).join('') + '</ul>' : '<p style="color:var(--text2);">No key points identified.</p>');
+
+  dec.innerHTML = `<h3><span class="icon">✅</span> Decisions</h3>` +
+    (result.decisions.length ? '<ul>' + result.decisions.map(d => `<li><span class="bullet">✓</span> ${escapeHtml(d)}</li>`).join('') + '</ul>' : '<p style="color:var(--text2);">No formal decisions detected.</p>');
+
+  act.innerHTML = `<h3><span class="icon">🎯</span> Action Items</h3>` +
+    (result.actionItems.length ? '<ul>' + result.actionItems.map(a => `<li><span class="bullet">→</span> ${escapeHtml(a)}</li>`).join('') + '</ul>' : '<p style="color:var(--text2);">No action items detected.</p>');
+}
+
+function renderExecutiveSummary(result) {
+  const container = document.getElementById('summary-executive');
+  const date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  let html = `<div class="summary-block exec-summary">`;
+  html += `<h3>📄 Executive Summary — ${date}</h3>`;
+  html += `<p style="margin-bottom:16px;line-height:1.8;">`;
+
+  if (result.topics.length) {
+    html += `<strong>Topics Discussed:</strong> ${result.topics.join(', ')}.<br><br>`;
+  }
+  if (result.people.length) {
+    html += `<strong>Participants:</strong> ${result.people.join(', ')}.<br><br>`;
+  }
+
+  html += `<strong>Summary:</strong> The meeting covered ${result.keyPoints.length} key points. `;
+  if (result.keyPoints.length > 0) {
+    html += `Key discussions included: ${result.keyPoints.slice(0, 3).join('; ')}. `;
+  }
+  if (result.decisions.length > 0) {
+    html += `${result.decisions.length} decision${result.decisions.length>1?'s were':' was'} made: ${result.decisions.join('; ')}. `;
+  }
+  if (result.actionItems.length > 0) {
+    html += `${result.actionItems.length} action item${result.actionItems.length>1?'s were':' was'} assigned for follow-up.`;
+  }
+  html += `</p>`;
+
+  if (result.actionItems.length) {
+    html += `<p><strong>Next Steps:</strong></p><ul style="margin-top:8px;">`;
+    result.actionItems.forEach(a => { html += `<li>${escapeHtml(a)}</li>`; });
+    html += `</ul>`;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+function renderCavemanBrief(result) {
+  const container = document.getElementById('summary-caveman');
+  let html = `<div class="summary-block caveman-brief">`;
+  html += `<h3>🦴 Caveman Brief</h3>`;
+  html += `<ul>`;
+
+  if (result.decisions.length) {
+    html += `<li>🗿 We decided: ${result.decisions.map(shorten).join('. ')}.</li>`;
+  }
+  if (result.actionItems.length) {
+    html += `<li>🏃 Must do: ${result.actionItems.map(shorten).join('. ')}.</li>`;
+  }
+  if (result.keyPoints.length) {
+    html += `<li>🧠 Know this: ${result.keyPoints.slice(0, 3).map(shorten).join('. ')}.</li>`;
+  }
+  if (result.people.length) {
+    html += `<li>👥 Tribe: ${result.people.join(', ')}.</li>`;
+  }
+
+  if (!result.decisions.length && !result.actionItems.length && !result.keyPoints.length) {
+    html += `<li>🤷 No clear takeaways. Meeting unclear.</li>`;
+  }
+
+  html += `</ul></div>`;
+  container.innerHTML = html;
+}
+
+function shorten(str) {
+  // Keep it caveman-short: max ~10 words
+  const words = str.split(/\s+/);
+  return words.length > 10 ? words.slice(0, 10).join(' ') + '...' : str;
+}
+
+function switchFormat(format, btn) {
+  currentFormat = format;
+  document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.format-content').forEach(c => c.style.display = 'none');
+  const target = document.getElementById('summary-' + format);
+  if (target) target.style.display = 'block';
+}
+
+// ============ SAVE / LOAD ============
+function saveNote() {
+  if (!currentResult) {
+    showToast('No summary to save. Optimize notes first.', 'error');
+    return;
+  }
+  const saved = JSON.parse(localStorage.getItem('mno_saved') || '[]');
+  saved.unshift({
+    id: Date.now(),
+    date: new Date().toISOString(),
+    raw: currentResult.raw,
+    keyPoints: currentResult.keyPoints,
+    decisions: currentResult.decisions,
+    actionItems: currentResult.actionItems,
+    people: currentResult.people,
+    topics: currentResult.topics,
+  });
+  // Keep max 50 saved notes
+  if (saved.length > 50) saved.length = 50;
+  localStorage.setItem('mno_saved', JSON.stringify(saved));
+  showToast('✅ Summary saved to local storage!', 'success');
+  renderSavedList();
+}
+
+function renderSavedList() {
+  const container = document.getElementById('saved-list');
+  const saved = JSON.parse(localStorage.getItem('mno_saved') || '[]');
+  if (!saved.length) {
+    container.innerHTML = '<p style="color:var(--text2);">No saved notes yet. Optimize and save some notes!</p>';
+    return;
+  }
+  container.innerHTML = saved.map(s => `
+    <div class="saved-item">
+      <div>
+        <div class="title">${escapeHtml(s.raw.substring(0, 80))}${s.raw.length>80?'...':''}</div>
+        <div class="meta">${new Date(s.date).toLocaleString()} · ${s.actionItems.length} actions · ${s.decisions.length} decisions</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm btn-secondary" onclick="loadSaved(${s.id})">📋 Load</button>
+        <button class="btn btn-sm btn-secondary" onclick="deleteSaved(${s.id})" style="color:var(--red);">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function loadSaved(id) {
+  const saved = JSON.parse(localStorage.getItem('mno_saved') || '[]');
+  const item = saved.find(s => s.id === id);
+  if (!item) return;
+  document.getElementById('notes-input').value = item.raw;
+  // Switch to optimize tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.tab[data-tab="optimize"]').classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+  document.getElementById('tab-optimize').style.display = 'block';
+  optimizeNotes();
+}
+
+function deleteSaved(id) {
+  let saved = JSON.parse(localStorage.getItem('mno_saved') || '[]');
+  saved = saved.filter(s => s.id !== id);
+  localStorage.setItem('mno_saved', JSON.stringify(saved));
+  renderSavedList();
+  showToast('Note deleted.', 'success');
+}
+
+// ============ PDF EXPORT ============
+function exportPDF() {
+  if (!currentResult) {
+    showToast('No summary to export. Optimize notes first.', 'error');
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 20;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let y = margin;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(31, 111, 235);
+  doc.text('Meeting Notes Summary', margin, y);
+  y += 10;
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y);
+  y += 6;
+
+  if (!isPremium) {
+    doc.setTextColor(200, 50, 50);
+    doc.setFontSize(8);
+    doc.text('[Free Tier — Upgrade to Premium for watermark-free PDFs]', margin, y);
+    doc.setTextColor(0, 0, 0);
+    y += 6;
+  }
+
+  y += 4;
+  doc.setDrawColor(200);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  function addSection(title, items, color) {
+    if (y > 260) { doc.addPage(); y = margin; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(color[0], color[1], color[2]);
+    doc.text(title, margin, y);
+    y += 7;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(50, 50, 50);
+    if (items && items.length) {
+      items.forEach(item => {
+        if (y > 270) { doc.addPage(); y = margin; }
+        const lines = doc.splitTextToSize(`\u2022 ${item}`, pageWidth - margin * 2);
+        doc.text(lines, margin + 3, y);
+        y += lines.length * 5 + 2;
+      });
+    } else {
+      doc.text('None identified.', margin + 3, y);
+      y += 7;
+    }
+    y += 4;
+  }
+
+  // Executive-style PDF
+  switch (currentFormat) {
+    case 'bullet':
+      addSection('Key Points', currentResult.keyPoints, [88, 166, 255]);
+      addSection('Decisions', currentResult.decisions, [63, 185, 80]);
+      addSection('Action Items', currentResult.actionItems, [219, 109, 40]);
+      break;
+    case 'executive':
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(50, 50, 50);
+      const summary = document.getElementById('summary-executive').innerText;
+      const lines = doc.splitTextToSize(summary, pageWidth - margin * 2);
+      lines.forEach(line => {
+        if (y > 270) { doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += 5;
+      });
+      break;
+    case 'caveman':
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(50, 50, 50);
+      const cavemanText = document.getElementById('summary-caveman').innerText;
+      const clines = doc.splitTextToSize(cavemanText, pageWidth - margin * 2);
+      clines.forEach(line => {
+        if (y > 270) { doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += 5;
+      });
+      break;
+  }
+
+  doc.save(`meeting-notes-${new Date().toISOString().slice(0,10)}.pdf`);
+  showToast('📄 PDF exported!', 'success');
+}
+
+// ============ COPY ============
+function copySummary() {
+  if (!currentResult) return;
+  let text = '';
+  switch (currentFormat) {
+    case 'bullet':
+      text = 'KEY POINTS:\n' + currentResult.keyPoints.map(p => '• ' + p).join('\n') +
+             '\n\nDECISIONS:\n' + currentResult.decisions.map(d => '✓ ' + d).join('\n') +
+             '\n\nACTION ITEMS:\n' + currentResult.actionItems.map(a => '→ ' + a).join('\n');
+      break;
+    case 'executive':
+      text = document.getElementById('summary-executive').innerText;
+      break;
+    case 'caveman':
+      text = document.getElementById('summary-caveman').innerText;
+      break;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('📋 Summary copied to clipboard!', 'success');
+  }).catch(() => {
+    showToast('Failed to copy. Please try again.', 'error');
+  });
+}
+
+// ============ STRIPE INTEGRATION ============
+let stripeInstance = null;
+
+function initStripe() {
+  // Using publishable key (starts with pk_). The restricted key (rk_) is used server-side.
+  // For a real deployment, use your own Stripe publishable key.
+  const STRIPE_PK = 'pk_live_placeholder'; // Replace with actual publishable key
+  if (typeof Stripe !== 'undefined' && STRIPE_PK !== 'pk_live_placeholder') {
+    stripeInstance = Stripe(STRIPE_PK);
+  }
+}
+
+function checkoutPremium() {
+  // In production, create a Checkout Session on your backend and redirect.
+  // For GitHub Pages (static), use Stripe Payment Links or a serverless function.
+  // Here we use a Payment Link approach — create one in Stripe Dashboard:
+  const PAYMENT_LINK = 'https://buy.stripe.com/placeholder'; // Replace with actual payment link
+
+  if (PAYMENT_LINK !== 'https://buy.stripe.com/placeholder') {
+    window.open(PAYMENT_LINK, '_blank');
+  }
+
+  // For demo purposes, simulate premium activation
+  // In production, use Stripe webhooks or check session status server-side
+  simulatePremiumActivation();
+}
+
+function simulatePremiumActivation() {
+  // This is a demo fallback. In production, verify payment server-side.
+  // For now, show a prompt explaining the setup.
+  showToast('⚠️ Demo mode: Replace PAYMENT_LINK with your real Stripe Payment Link. Premium features activated for this session.', 'success');
+  activatePremium();
+}
+
+function activatePremium() {
+  isPremium = true;
+  localStorage.setItem('mno_premium', 'true');
+  document.getElementById('premium-status').style.display = 'block';
+  document.getElementById('premium-upsell').style.display = 'none';
+  document.getElementById('btn-checkout').disabled = true;
+  document.getElementById('btn-checkout').innerHTML = '✅ Premium Active';
+  closePremiumModal();
+  showToast('⭐ Premium activated! All features unlocked.', 'success');
+}
+
+// ============ UI HELPERS ============
+function showToast(msg, type) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast ' + type + ' show';
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 3000);
+}
+
+function clearInput() {
+  document.getElementById('notes-input').value = '';
+  document.getElementById('output-section').classList.remove('visible');
+  currentResult = null;
+  showToast('Input cleared.', 'success');
+}
+
+function loadDemo() {
+  document.getElementById('notes-input').value = `Weekly Product Sync — April 14, 2026
+
+Attendees: Alice (PM), Bob (Engineering Lead), Carol (Design), Dave (Marketing)
+
+Agenda:
+1. Q1 Metrics Review
+2. Mobile App Redesign
+3. Marketing Campaign Launch
+4. Budget Planning
+
+Alice: Q1 numbers are in. User growth up 12%, but retention dropped 3%. We need to address churn.
+Key takeaway: Retention is the #1 priority for Q2.
+
+Bob: The mobile app redesign is behind schedule. We need 2 more sprints.
+Decision: Extend mobile redesign timeline by 2 weeks. New target: June 1.
+
+Carol: Design system components are 80% ready. Will finish the remaining by end of week.
+
+Dave: Q2 campaign budget is approved — $50k for paid social and influencer partnerships.
+Decision: Allocate $30k to paid social, $20k to influencers.
+
+TODO: @Alice to schedule retention brainstorming session by Friday.
+TODO: @Bob to update project timeline in Jira.
+TODO: @Carol to finalize design system — due EOW.
+TODO: @Dave to draft campaign brief and share with team.
+
+Next meeting: April 21, same time.`;
+  showToast('📥 Demo meeting notes loaded!', 'success');
+  document.getElementById('notes-input').scrollIntoView({ behavior: 'smooth' });
+}
+
+function showPremiumModal() {
+  document.getElementById('premium-modal').classList.add('show');
+}
+
+function closePremiumModal() {
+  document.getElementById('premium-modal').classList.remove('show');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Close modal on overlay click
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'premium-modal') closePremiumModal();
+});
+
+// Init Stripe on load
+initStripe();
+
+// Check URL params for Stripe success redirect
+if (window.location.search.includes('session_id=')) {
+  activatePremium();
+  window.history.replaceState({}, '', window.location.pathname);
+}
+</script>
+</body>
+</html>
