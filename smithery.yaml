@@ -1,0 +1,14 @@
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    properties: {}
+  commandFunction: |
+    (config) => ({url: 'https://rumblingb.github.io/meeting-notes-optimizer'})
+
+displayName: "Meeting Notes Optimizer Premium"
+description: "Convert messy meeting notes into clean summaries. Auto-extract action items, decisions, and key points. PDF export."
+categories:
+  - "Productivity"
+  - "Meetings"
+  - "AI"
